@@ -1,0 +1,39 @@
+type :foo.1 = { w, }
+export
+function w $__foo_get_age(:foo.1 %.1) {
+@start.1
+@body.2
+	%.2 =l add %.1, 0
+	%.3 =w loadw %.2
+	ret %.3
+}
+export
+function w $__foo_set_age(l %.1, w %.3) {
+@start.3
+	%.2 =l alloc8 8
+	storel %.1, %.2
+	%.4 =l alloc4 4
+	storew %.3, %.4
+@body.4
+	%.5 =w loadw %.4
+	%.6 =l loadl %.2
+	%.7 =l add %.6, 0
+	storew %.5, %.7
+	ret %.5
+}
+export
+function w $main() {
+@start.5
+	%.1 =l alloc4 4
+	%.2 =l alloc8 8
+@body.6
+	storew 25, %.1
+	storel %.1, %.2
+	%.3 =w call $__foo_get_age(:foo.1 %.1)
+	%.4 =l loadl %.2
+	%.5 =w call $__foo_get_age(:foo.1 %.4)
+	%.6 =w call $__foo_set_age(l %.1, w 30)
+	%.7 =l loadl %.2
+	%.8 =w call $__foo_set_age(l %.7, w 35)
+	ret 0
+}

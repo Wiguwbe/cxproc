@@ -876,11 +876,61 @@ mkincdecexpr(enum tokenkind op, struct expr *base, bool post)
 }
 
 static struct expr *
-postfixexpr(struct scope *s, struct expr *r)
+_funcall(struct scope *s, struct expr *r, struct expr *f_arg)
 {
-	struct expr *e, *arr, *idx, *tmp, **end;
+	struct expr *e, **end;
 	struct type *t;
 	struct param *p;
+
+	next();
+	if (r->kind == EXPRIDENT && r->u.ident.decl->kind == DECLBUILTIN) {
+		e = builtinfunc(s, r->u.ident.decl->u.builtin);
+		expect(TRPAREN, "after builtin parameters");
+		return e;
+	}
+	if (r->type->kind != TYPEPOINTER || r->type->base->kind != TYPEFUNC)
+		error(&tok.loc, "called object is not a function");
+	t = r->type->base;
+	e = mkexpr(EXPRCALL, t->base, r);
+	e->u.call.args = NULL;
+	e->u.call.nargs = 0;
+	p = t->u.func.params;
+	end = &e->u.call.args;
+	if (f_arg != NULL) {
+		*end = f_arg;
+		end = &(*end)->next;
+		++e->u.call.nargs;
+		if (p)
+			p = p->next;
+	}
+	while (tok.kind != TRPAREN) {
+		if (e->u.call.args && f_arg == NULL)
+			expect(TCOMMA, "or ')' after function call argument");
+		f_arg = NULL;
+		if (!p && !t->u.func.isvararg && t->u.func.paraminfo)
+			error(&tok.loc, "too many arguments for function call");
+		*end = assignexpr(s);
+		if (!t->u.func.isprototype || (t->u.func.isvararg && !p))
+			*end = exprpromote(*end);
+		else
+			*end = exprassign(*end, p->type);
+		end = &(*end)->next;
+		++e->u.call.nargs;
+		if (p)
+			p = p->next;
+	}
+	if (p && !t->u.func.isvararg && t->u.func.paraminfo)
+		error(&tok.loc, "not enough arguments for function call");
+	e = decay(e);
+	next();
+	return e;
+}
+
+static struct expr *
+postfixexpr(struct scope *s, struct expr *r)
+{
+	struct expr *e, *arr, *idx, *tmp;
+	struct type *t;
 	struct member *m;
 	unsigned long long offset;
 	enum typequal tq;
@@ -910,39 +960,7 @@ postfixexpr(struct scope *s, struct expr *r)
 			expect(TRBRACK, "after array index");
 			break;
 		case TLPAREN:  /* function call */
-			next();
-			if (r->kind == EXPRIDENT && r->u.ident.decl->kind == DECLBUILTIN) {
-				e = builtinfunc(s, r->u.ident.decl->u.builtin);
-				expect(TRPAREN, "after builtin parameters");
-				break;
-			}
-			if (r->type->kind != TYPEPOINTER || r->type->base->kind != TYPEFUNC)
-				error(&tok.loc, "called object is not a function");
-			t = r->type->base;
-			e = mkexpr(EXPRCALL, t->base, r);
-			e->u.call.args = NULL;
-			e->u.call.nargs = 0;
-			p = t->u.func.params;
-			end = &e->u.call.args;
-			while (tok.kind != TRPAREN) {
-				if (e->u.call.args)
-					expect(TCOMMA, "or ')' after function call argument");
-				if (!p && !t->u.func.isvararg && t->u.func.paraminfo)
-					error(&tok.loc, "too many arguments for function call");
-				*end = assignexpr(s);
-				if (!t->u.func.isprototype || (t->u.func.isvararg && !p))
-					*end = exprpromote(*end);
-				else
-					*end = exprassign(*end, p->type);
-				end = &(*end)->next;
-				++e->u.call.nargs;
-				if (p)
-					p = p->next;
-			}
-			if (p && !t->u.func.isvararg && t->u.func.paraminfo)
-				error(&tok.loc, "not enough arguments for function call");
-			e = decay(e);
-			next();
+			e = _funcall(s, r, NULL);
 			break;
 		case TPERIOD:
 			r = mkunaryexpr(TBAND, r);
@@ -961,20 +979,74 @@ postfixexpr(struct scope *s, struct expr *r)
 			lvalue = op == TARROW || r->base->lvalue;
 			offset = 0;
 			m = typemember(t, tok.lit, &offset);
-			if (!m)
-				error(&tok.loc, "struct/union has no member named '%s'", tok.lit);
-			r = mkbinaryexpr(&tok.loc, TADD, exprconvert(r, &typeulong), mkconstexpr(&typeulong, offset));
-			r->type = mkpointertype(m->type, tq | m->qual);
-			r = mkunaryexpr(TMUL, r);
-			r->lvalue = lvalue;
-			if (m->bits.before || m->bits.after) {
-				e = mkexpr(EXPRBITFIELD, r->type, r);
-				e->lvalue = lvalue;
-				e->u.bitfield.bits = m->bits;
+			if (!m) {
+				//error(&tok.loc, "struct/union has no member named '%s'", tok.lit);
+
+				// try a method instead
+
+				char str_method_name[256];
+				sprintf(
+					str_method_name, "__%s_%s",
+					r->type->base->u.structunion.tag,
+					tok.lit
+				);
+				m = typemethod(t, tok.lit);
+				if (!m)
+					error(&tok.loc, "struct/union has no member/method named '%s'", tok.lit);
+
+				next();
+				if (tok.kind != TLPAREN)
+					error(&tok.loc, "expected function call after method reference");
+
+				// 1. node = ident(func_name);
+				struct decl *method_decl = scopegetdecl(s, str_method_name, 1);
+				assert(method_decl != NULL);	// shouldn't be by now
+				struct expr *pr = r;
+				r = mkexpr(EXPRIDENT, method_decl->type, NULL);
+				r->qual = method_decl->qual;
+				r->lvalue = method_decl->kind == DECLOBJECT;
+				r->u.ident.decl = method_decl;
+				r = decay(r);
+
+				// 2. node = methodcall(node, func_name);
+				int ptrs_need = 0;
+				struct type *ty2 = method_decl->type->u.func.params->type;
+				while (ty2->kind == TYPEPOINTER) {
+					ptrs_need ++;
+					ty2 = ty2->base;
+				}
+
+				ty2 = pr->type;
+				while (ty2->kind == TYPEPOINTER) {
+					ptrs_need --;
+					ty2 = ty2->base;
+				}
+
+				// add ref or deref
+				if (ptrs_need) {
+					enum tokenkind op2 = ptrs_need > 0 ? TBAND : TMUL;
+					if (ptrs_need < 0)
+						ptrs_need = -ptrs_need;
+					while (ptrs_need --)
+						pr = mkunaryexpr(op2, pr);
+				}
+
+				// prepare first param
+				e = _funcall(s, r, pr);
 			} else {
-				e = r;
+				r = mkbinaryexpr(&tok.loc, TADD, exprconvert(r, &typeulong), mkconstexpr(&typeulong, offset));
+				r->type = mkpointertype(m->type, tq | m->qual);
+				r = mkunaryexpr(TMUL, r);
+				r->lvalue = lvalue;
+				if (m->bits.before || m->bits.after) {
+					e = mkexpr(EXPRBITFIELD, r->type, r);
+					e->lvalue = lvalue;
+					e->u.bitfield.bits = m->bits;
+				} else {
+					e = r;
+				}
+				next();
 			}
-			next();
 			break;
 		case TINC:
 		case TDEC:

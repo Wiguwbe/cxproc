@@ -228,6 +228,7 @@ struct type {
 		struct {
 			char *tag;
 			struct member *members;
+			struct member *methods;
 		} structunion;
 	} u;
 };
@@ -431,6 +432,7 @@ struct type *typepromote(struct type *, unsigned);
 struct type *typeadjust(struct type *);
 enum typeprop typeprop(struct type *);
 struct member *typemember(struct type *, const char *, unsigned long long *);
+struct member *typemethod(struct type *, const char *);
 
 struct param *mkparam(char *, struct type *, enum typequal);
 

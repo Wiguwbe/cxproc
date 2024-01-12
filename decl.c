@@ -58,6 +58,9 @@ struct structbuilder {
 	unsigned bits;  /* number of bits remaining in the last byte */
 };
 
+static struct qualtype
+declarator(struct scope *s, struct qualtype base, char **name, bool allowabstract);
+
 struct decl *
 mkdecl(enum declkind k, struct type *t, enum typequal tq, enum linkage linkage)
 {
@@ -186,6 +189,7 @@ tagspec(struct scope *s)
 			t->align = 0;
 			t->u.structunion.tag = tag;
 			t->u.structunion.members = NULL;
+			t->u.structunion.methods = NULL;
 		}
 		t->incomplete = true;
 		if (tag)
@@ -447,6 +451,18 @@ istypename(struct scope *s, const char *name)
 	return d && d->kind == DECLTYPE;
 }
 
+static void
+addmethod(struct type *basety, struct type *functy, char *name)
+{
+	struct member *m;
+
+	m = xmalloc(sizeof(*m));
+	m->type = functy;
+	m->name = name;
+	m->next = basety->u.structunion.methods;
+	basety->u.structunion.methods = m;
+}
+
 /*
 When parsing a declarator, qualifiers for derived types are temporarily
 stored in the `qual` field of the type itself (elsewhere this field
@@ -473,6 +489,56 @@ declaratortypes(struct scope *s, struct list *result, char **name, bool allowabs
 	if (name)
 		*name = NULL;
 	ptr = result->next;
+
+	// try to parse a method
+	if (tok.kind == TIDENT) {
+		char *m_tag = tok.lit;
+		if (peek(TPERIOD)) {
+			if (tok.kind != TIDENT)
+				error(&tok.loc, "expected identifier at method definition");
+
+			char *m_name = tok.lit;
+			// check there is a structure with that name
+			struct type *m_struct_type = scopegettag(s, m_tag, false);	// or TRUE?
+			if(!m_struct_type)
+				error(&tok.loc, "method definition on unknown struct");
+			if(m_struct_type->kind != TYPESTRUCT)
+				error(&tok.loc, "methods are only available on structs");
+			// set name
+			int name_len = 3 + strlen(m_tag) + strlen(m_name);
+			char *f_method_name = xmalloc(name_len+1);
+			sprintf(f_method_name, "__%s_%s", m_tag, m_name);
+
+			*name = f_method_name;
+
+			t = mktype(TYPEFUNC, 0);
+			t->u.func.params = NULL;
+			t->u.func.nparam = 0;
+			p = &t->u.func.params;
+
+			addmethod(m_struct_type, t, m_name);
+
+			// parse first argument
+			next();
+			expect(TLPAREN, "after method name");
+
+			struct qualtype m_this_type = {
+				m_struct_type,
+				QUALNONE
+			};
+			char *m_this_name;
+			m_this_type = declarator(s, m_this_type, &m_this_name, true);
+			*p = mkparam(m_this_name, typeadjust(m_this_type.type), m_this_type.qual);
+			p = &(*p)->next;
+			++t->u.func.nparam;
+
+			// skip if comma
+			consume(TCOMMA);
+
+			goto method;
+		}
+	}
+
 	switch (tok.kind) {
 	case TLPAREN:
 		next();
@@ -508,13 +574,14 @@ declaratortypes(struct scope *s, struct list *result, char **name, bool allowabs
 			next();
 		func:
 			t = mktype(TYPEFUNC, 0);
+			t->u.func.params = NULL;
+			t->u.func.nparam = 0;
+			p = &t->u.func.params;
+		method:
 			t->qual = QUALNONE;
 			t->u.func.isprototype = false;
 			t->u.func.isvararg = false;
 			t->u.func.isnoreturn = false;
-			t->u.func.params = NULL;
-			t->u.func.nparam = 0;
-			p = &t->u.func.params;
 			switch (tok.kind) {
 			case TIDENT:
 				if (!istypename(s, tok.lit)) {

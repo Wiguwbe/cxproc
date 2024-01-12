@@ -258,6 +258,20 @@ typemember(struct type *t, const char *name, unsigned long long *offset)
 	return NULL;
 }
 
+struct member *
+typemethod(struct type *t, const char *name)
+{
+	struct member *m;
+
+	assert(t->kind == TYPESTRUCT);
+	for (m = t->u.structunion.methods; m; m = m->next) {
+		if (strcmp(m->name, name) == 0)
+			return m;
+	}
+
+	return NULL;
+}
+
 struct param *
 mkparam(char *name, struct type *t, enum typequal tq)
 {
