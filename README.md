@@ -1,6 +1,11 @@
-(mirrored on [GitHub][GitHub mirror])
+# CXproC
 
-[![builds.sr.ht status](https://builds.sr.ht/~mcf/cproc.svg)](https://builds.sr.ht/~mcf/cproc)
+CXproc is a [C11] compiler using [QBE] as a backend. This version
+adds features to the C language, like struct methods/functions.
+
+The original README is kept for reference.
+
+---
 
 `cproc` is a [C11] compiler using [QBE] as a backend. It is released
 under the [ISC] license.
