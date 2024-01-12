@@ -61,7 +61,7 @@ case "$target" in
 	startfiles='"-l", ":crt1.o", "-l", ":crti.o"'
 	endfiles='"-l", "c", "-l", ":crtn.o"'
 	;;
-*-linux-*gnu*)
+*-linux-*gnu* | *-linux*)
 	test "${DEFAULT_DYNAMIC_LINKER+set}" || case "$target" in
 	x86_64*)  DEFAULT_DYNAMIC_LINKER=/lib64/ld-linux-x86-64.so.2 ;;
 	aarch64*) DEFAULT_DYNAMIC_LINKER=/lib/ld-linux-aarch64.so.1  ;;
