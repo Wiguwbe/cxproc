@@ -67,7 +67,7 @@ stmt(struct func *f, struct scope *s)
 	struct expr *e;
 	struct type *t;
 	struct value *v;
-	struct block *b[4];
+	struct block *b[5];
 	struct switchcases swtch;
 
 	switch (tok.kind) {
@@ -177,7 +177,8 @@ stmt(struct func *f, struct scope *s)
 
 		b[0] = mkblock("while_cond");
 		b[1] = mkblock("while_body");
-		b[2] = mkblock("while_join");
+		b[2] = mkblock("while_else");
+		b[3] = mkblock("while_join");
 
 		funclabel(f, b[0]);
 		v = funcexpr(f, e);
@@ -185,11 +186,17 @@ stmt(struct func *f, struct scope *s)
 		funclabel(f, b[1]);
 		s = mkscope(s);
 		s->continuelabel = b[0];
-		s->breaklabel = b[2];
+		s->breaklabel = b[3];
 		labelstmt(f, s);
 		s = delscope(s);
 		funcjmp(f, b[0]);
 		funclabel(f, b[2]);
+		if (consume(TELSE)) {
+			s = mkscope(s);
+			labelstmt(f, s);
+			s = delscope(s);
+		}
+		funclabel(f, b[3]);
 		s = delscope(s);
 		break;
 	case TDO:
@@ -238,7 +245,8 @@ stmt(struct func *f, struct scope *s)
 		b[0] = mkblock("for_cond");
 		b[1] = mkblock("for_body");
 		b[2] = mkblock("for_cont");
-		b[3] = mkblock("for_join");
+		b[3] = mkblock("for_else");
+		b[4] = mkblock("for_join");
 
 		funclabel(f, b[0]);
 		if (tok.kind != TSEMICOLON) {
@@ -256,7 +264,7 @@ stmt(struct func *f, struct scope *s)
 
 		funclabel(f, b[1]);
 		s = mkscope(s);
-		s->breaklabel = b[3];
+		s->breaklabel = b[4];
 		s->continuelabel = b[2];
 		labelstmt(f, s);
 		s = delscope(s);
@@ -268,6 +276,12 @@ stmt(struct func *f, struct scope *s)
 		}
 		funcjmp(f, b[0]);
 		funclabel(f, b[3]);
+		if (consume(TELSE)) {
+			s = mkscope(s);
+			labelstmt(f, s);
+			s = delscope(s);
+		}
+		funclabel(f, b[4]);
 		s = delscope(s);
 		break;
 

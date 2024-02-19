@@ -3,7 +3,11 @@
 CXproc is a [C11] compiler using [QBE] as a backend. This version
 adds features to the C language, like struct methods/functions.
 
-The original README is kept for reference.
+Added features:
+- **methods**: ability to add methods to structs (`int Foo.method(args...)`), see `test/methods.c` for examples;
+- **for-else**: `else` clause executed if `for`/`while` exits normally (no `break`).
+
+The original README is kept for reference below.
 
 ---
 
