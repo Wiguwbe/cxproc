@@ -514,6 +514,7 @@ declaratortypes(struct scope *s, struct list *result, char **name, bool allowabs
 			t = mktype(TYPEFUNC, 0);
 			t->u.func.params = NULL;
 			t->u.func.nparam = 0;
+			t->u.func.isprototype = true;
 			p = &t->u.func.params;
 
 			addmethod(m_struct_type, t, m_name);
@@ -577,9 +578,9 @@ declaratortypes(struct scope *s, struct list *result, char **name, bool allowabs
 			t->u.func.params = NULL;
 			t->u.func.nparam = 0;
 			p = &t->u.func.params;
+			t->u.func.isprototype = false;
 		method:
 			t->qual = QUALNONE;
-			t->u.func.isprototype = false;
 			t->u.func.isvararg = false;
 			t->u.func.isnoreturn = false;
 			switch (tok.kind) {
