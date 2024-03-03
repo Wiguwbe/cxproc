@@ -82,11 +82,5 @@ struct {
 
 This behaves exactly the same as `{0}`.
 
-### Missing operand in conditional expression
-
-GNU C allows you to omit the second operand in conditional expressions,
-in which case the first operand is used. So `E1 ? : E2` behaves the same
-as `E1 ? E1 : E2`, except that `E1` is evaluated only once.
-
 [GNU extensions]: https://gcc.gnu.org/onlinedocs/gcc/C-Extensions.html
 [`__builtin_offsetof`]: https://gcc.gnu.org/onlinedocs/gcc/Offsetof.html
