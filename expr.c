@@ -51,7 +51,8 @@ delexpr(struct expr *e)
 		break;
 	case EXPRCOND:
 		delexpr(e->base);
-		delexpr(e->u.cond.t);
+		if(e->u.cond.t != e->base)
+			delexpr(e->u.cond.t);
 		delexpr(e->u.cond.f);
 		break;
 	/*
@@ -1258,7 +1259,10 @@ condexpr(struct scope *s)
 	e = binaryexpr(s, NULL, 0);
 	if (!consume(TQUESTION))
 		return e;
-	l = expr(s);
+	if(tok.kind == TCOLON)
+		l = e;
+	else
+		l = expr(s);
 	expect(TCOLON, "in conditional expression");
 	r = condexpr(s);
 
