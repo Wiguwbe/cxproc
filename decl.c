@@ -710,9 +710,22 @@ parameter(struct scope *s)
 
 	if(consume(TASSIGN))
 	{
-		e = eval(assignexpr(s), EVALARITH);
-		if (e->kind != EXPRCONST)
-			error(&tok.loc, "Default value must be constant values");
+		if (t.type->kind == TYPESTRUCT && tok.kind == TLBRACE)
+		{
+			e = compoundliteral(s, t.type);
+			e->qual = t.qual;
+			for(struct init *init = e->u.compound.init; init; init=init->next)
+			{
+				if(init->expr->kind != EXPRCONST)
+					error(&tok.loc, "Default value must be constant");
+			}
+		}
+		else
+		{
+			e = eval(assignexpr(s), EVALARITH);
+			if (e->kind != EXPRCONST)
+				error(&tok.loc, "Default value must be constant");
+		}
 		p->default_value = e;
 	}
 

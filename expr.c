@@ -1176,6 +1176,19 @@ unaryexpr(struct scope *s)
 	return e;
 }
 
+struct expr *
+compoundliteral(struct scope *s, struct type *t)
+{
+	struct expr *e = NULL;
+	if(tok.kind == TLBRACE) {
+		e = mkexpr(EXPRCOMPOUND, t, NULL);
+		e->qual = QUALNONE;
+		e->lvalue = true;
+		e->u.compound.init = parseinit(s, t);
+	}
+	return e;
+}
+
 static struct expr *
 castexpr(struct scope *s)
 {
