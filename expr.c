@@ -1,3 +1,4 @@
+#include <alloca.h>
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
@@ -8,6 +9,19 @@
 #include "util.h"
 #include "utf.h"
 #include "cc.h"
+
+struct pos_arg {
+	struct location loc;
+	struct expr *e;
+	struct pos_arg *next;
+};
+
+struct named_arg {
+	struct location loc;
+	char *name;
+	struct expr *e;
+	struct named_arg *next;
+};
 
 static struct expr *
 mkexpr(enum exprkind k, struct type *t, struct expr *b)
@@ -894,6 +908,12 @@ _funcall(struct scope *s, struct expr *r, struct expr *f_arg)
 	struct expr *e, **end;
 	struct type *t;
 	struct param *p;
+	struct pos_arg p_args = {0}, *p_arg_ptr;
+	struct pos_arg **p_args_tail = &p_args.next;
+	struct named_arg n_args = {0}, *n_arg_ptr;
+	struct named_arg **n_args_tail = &n_args.next;
+	bool skip_comma = true;
+	bool expect_designator = false;
 
 	next();
 	if (r->kind == EXPRIDENT && r->u.ident.decl->kind == DECLBUILTIN) {
@@ -903,41 +923,113 @@ _funcall(struct scope *s, struct expr *r, struct expr *f_arg)
 	}
 	if (r->type->kind != TYPEPOINTER || r->type->base->kind != TYPEFUNC)
 		error(&tok.loc, "called object is not a function");
+
 	t = r->type->base;
 	e = mkexpr(EXPRCALL, t->base, r);
 	e->u.call.args = NULL;
 	e->u.call.nargs = 0;
 	p = t->u.func.params;
 	end = &e->u.call.args;
-	if (f_arg != NULL) {
-		*end = f_arg;
-		end = &(*end)->next;
-		++e->u.call.nargs;
-		if (p)
-			p = p->next;
+
+	// parse all arguments to positional and named
+	if (f_arg) {
+		*p_args_tail = (struct pos_arg*)alloca(sizeof(struct pos_arg));
+		(*p_args_tail)->e = f_arg;
+		(*p_args_tail)->next = NULL;
+		p_args_tail = &(*p_args_tail)->next;
 	}
+	// parse positional args
 	while (tok.kind != TRPAREN) {
-		if (e->u.call.args && f_arg == NULL)
+		if (!skip_comma)
 			expect(TCOMMA, "or ')' after function call argument");
-		f_arg = NULL;
-		if (!p && !t->u.func.isvararg && t->u.func.paraminfo)
-			error(&tok.loc, "too many arguments for function call");
-		*end = assignexpr(s);
-		if (!t->u.func.isprototype || (t->u.func.isvararg && !p))
-			*end = exprpromote(*end);
 		else
-			*end = exprassign(*end, p->type);
+			skip_comma = false;
+
+		if (expect_designator) {
+			if (consume(TPERIOD))
+				goto _designator;
+			// else
+			error(&tok.loc, "expected argument designator");
+		}
+
+		// normal argument?
+		if (consume(TPERIOD)) {
+			if (t->u.func.isvararg)
+				error(&tok.loc, "argument designators not allowed in varargs");
+			expect_designator = true;
+			goto _designator;
+		}
+		// positional argument
+		*p_args_tail = (struct pos_arg*)alloca(sizeof(struct pos_arg));
+		(*p_args_tail)->loc = tok.loc;
+		(*p_args_tail)->e = assignexpr(s);
+		(*p_args_tail)->next = NULL;
+		p_args_tail = &(*p_args_tail)->next;
+		continue;
+
+	_designator:
+		if (tok.kind != TIDENT)
+			error(&tok.loc, "expected identifier in argument designator");
+		*n_args_tail = (struct named_arg*)alloca(sizeof(struct named_arg));
+		(*n_args_tail)->loc = tok.loc;
+		(*n_args_tail)->name = tok.lit;
+		(*n_args_tail)->next = NULL;
+		next();
+		expect(TASSIGN, "after argument designator name");
+		(*n_args_tail)->e = assignexpr(s);
+		n_args_tail = &(*n_args_tail)->next;
+	}
+
+	// populate from positional arguments
+	for (p_arg_ptr = p_args.next; p_arg_ptr; p_arg_ptr = p_arg_ptr->next) {
+		if (!p && !t->u.func.isvararg && t->u.func.paraminfo)
+			error(&p_arg_ptr->loc, "too many arguments for function call");
+		if (!t->u.func.isprototype || (t->u.func.isvararg & !p))
+			*end = exprpromote(p_arg_ptr->e);
+		else
+			*end = exprassign(p_arg_ptr->e, p->type);
 		end = &(*end)->next;
 		++e->u.call.nargs;
 		if (p)
 			p = p->next;
 	}
-	while(p && p->default_value != NULL) {
-		*end = cpexpr(p->default_value);
+	// and now named arguments
+	for (; p; p = p->next) {
+		// look for the argument in the named_arg array
+		for (n_arg_ptr = n_args.next; n_arg_ptr; n_arg_ptr = n_arg_ptr->next) {
+			if (!strcmp(n_arg_ptr->name, p->name))
+				goto _named_arg;
+		}
+		// if not found, check for default
+		if (p->default_value != NULL) {
+			*end = cpexpr(p->default_value);
+			if (!t->u.func.isprototype)
+				*end = exprpromote(*end);
+			else
+				*end = exprassign(*end, p->type);
+			end = &(*end)->next;
+			++e->u.call.nargs;
+			continue;
+		}
+		// otherwise, missing argument!
+		error(&tok.loc, "not enough arguments for function call");
+		// no return
+	_named_arg:
+		if (!t->u.func.isprototype)
+			*end = exprpromote(n_arg_ptr->e);
+		else
+			*end = exprassign(n_arg_ptr->e, p->type);
 		end = &(*end)->next;
+		// to avoid reuse ..?
+		n_arg_ptr->e = NULL;
 		++e->u.call.nargs;
-		p = p->next;
 	}
+	// check if all named arguments were used
+	for (n_arg_ptr = n_args.next; n_arg_ptr; n_arg_ptr = n_arg_ptr->next) {
+		if (n_arg_ptr->e != NULL)
+			error(&n_arg_ptr->loc, "too many arguments for function call");
+	}
+
 	if (p && !t->u.func.isvararg && t->u.func.paraminfo)
 		error(&tok.loc, "not enough arguments for function call");
 	e = decay(e);

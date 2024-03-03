@@ -1,0 +1,27 @@
+export
+function w $foo(w %.1, w %.3, w %.5) {
+@start.1
+	%.2 =l alloc4 4
+	storew %.1, %.2
+	%.4 =l alloc4 4
+	storew %.3, %.4
+	%.6 =l alloc4 4
+	storew %.5, %.6
+@body.2
+	%.7 =w loadw %.2
+	%.8 =w loadw %.4
+	%.9 =w add %.7, %.8
+	%.10 =w loadw %.6
+	%.11 =w add %.9, %.10
+	ret %.11
+}
+export
+function w $main() {
+@start.3
+@body.4
+	%.1 =w call $foo(w 7, w 5, w 6)
+	%.2 =w call $foo(w 7, w 2, w 6)
+	%.3 =w call $foo(w 7, w 1, w 12)
+	%.4 =w call $foo(w 1, w 2, w 3)
+	ret 0
+}
