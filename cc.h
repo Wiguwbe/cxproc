@@ -185,6 +185,7 @@ struct param {
 	struct type *type;
 	enum typequal qual;
 	struct value *value;
+	struct expr *default_value;
 	struct param *next;
 };
 

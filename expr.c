@@ -26,6 +26,18 @@ mkexpr(enum exprkind k, struct type *t, struct expr *b)
 	return e;
 }
 
+static struct expr *
+cpexpr(struct expr *orig)
+{
+	struct expr *e;
+
+	e = xmalloc(sizeof(*e));
+	memcpy(e, orig, sizeof(*orig));
+	e->next = NULL;
+
+	return e;
+}
+
 void
 delexpr(struct expr *e)
 {
@@ -919,6 +931,12 @@ _funcall(struct scope *s, struct expr *r, struct expr *f_arg)
 		++e->u.call.nargs;
 		if (p)
 			p = p->next;
+	}
+	while(p && p->default_value != NULL) {
+		*end = cpexpr(p->default_value);
+		end = &(*end)->next;
+		++e->u.call.nargs;
+		p = p->next;
 	}
 	if (p && !t->u.func.isvararg && t->u.func.paraminfo)
 		error(&tok.loc, "not enough arguments for function call");

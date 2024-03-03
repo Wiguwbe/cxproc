@@ -281,6 +281,7 @@ mkparam(char *name, struct type *t, enum typequal tq)
 	p->name = name;
 	p->type = t;
 	p->qual = tq;
+	p->default_value = NULL;
 	p->next = NULL;
 
 	return p;

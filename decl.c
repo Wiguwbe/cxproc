@@ -478,6 +478,7 @@ declaratortypes(struct scope *s, struct list *result, char **name, bool allowabs
 	struct expr *e;
 	unsigned long long i;
 	enum typequal tq;
+	bool param_has_default = false;
 
 	while (consume(TMUL)) {
 		tq = QUALNONE;
@@ -597,8 +598,14 @@ declaratortypes(struct scope *s, struct list *result, char **name, bool allowabs
 				/* fallthrough */
 			default:
 				t->u.func.isprototype = true;
+				param_has_default = false;
 				for (;;) {
 					*p = parameter(s);
+					if((*p)->default_value == NULL && param_has_default)
+					{
+						error(&tok.loc, "Parameter without default value after parameter with default value");
+					}
+					param_has_default = (*p)->default_value != NULL;
 					p = &(*p)->next;
 					++t->u.func.nparam;
 					if (!consume(TCOMMA))
@@ -689,6 +696,8 @@ parameter(struct scope *s)
 	char *name;
 	struct qualtype t;
 	enum storageclass sc;
+	struct param *p;
+	struct expr *e;
 
 	t = declspecs(s, &sc, NULL, NULL);
 	if (!t.type)
@@ -697,7 +706,17 @@ parameter(struct scope *s)
 		error(&tok.loc, "parameter declaration has invalid storage-class specifier");
 	t = declarator(s, t, &name, true);
 
-	return mkparam(name, typeadjust(t.type), t.qual);
+	p = mkparam(name, typeadjust(t.type), t.qual);
+
+	if(consume(TASSIGN))
+	{
+		e = eval(assignexpr(s), EVALARITH);
+		if (e->kind != EXPRCONST)
+			error(&tok.loc, "Default value must be constant values");
+		p->default_value = e;
+	}
+
+	return p;
 }
 
 static bool
